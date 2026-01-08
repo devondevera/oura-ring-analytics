@@ -1,0 +1,163 @@
+import pandas as pd
+
+# Load monthly datasets
+monthly_readiness = pd.read_csv("monthly_readiness_summary.csv")
+monthly_sleep = pd.read_csv("monthly_sleep_summary.csv")
+
+print(monthly_readiness.head())
+print(monthly_sleep.head())
+
+# Merge on month
+monthly_merged = pd.merge(
+    monthly_readiness,
+    monthly_sleep,
+    on="month",
+    how="inner"
+)
+
+print(monthly_merged)
+
+# Normalize helper
+def normalize(series):
+    return 100 * (series - series.min()) / (series.max() - series.min())
+
+monthly_merged["recovery_index"] = (
+    0.5 * normalize(monthly_merged["avg_readiness"]) +
+    0.3 * normalize(monthly_merged["avg_sleep_score"]) +
+    0.2 * normalize(monthly_merged["avg_hrv"])
+)
+
+# Create fatigue risk flag
+monthly_merged["fatigue_risk"] = (
+    (monthly_merged["low_readiness_days"] >= 5) |
+    (monthly_merged["sleep_variability"] > 10)
+)
+
+# Save final monthly dataset
+monthly_merged.to_csv("monthly_health_performance.csv", index=False)
+
+print("Final monthly dataset saved!")
+
+import pandas as pd
+import json
+
+# Load the CSV (semicolon separated)
+df = pd.read_csv("dailyreadiness.csv", sep=";")
+
+# Inspect the data
+print(df.head())
+print(df.columns)
+
+# Parse contributors JSON column
+contributors_df = df["contributors"].apply(json.loads).apply(pd.Series)
+
+print(contributors_df.head())
+
+# Create clean daily readiness table
+daily_readiness = pd.concat(
+    [
+        df[["day", "score", "temperature_deviation"]],
+        contributors_df
+    ],
+    axis=1
+)
+
+# Save clean readiness file
+daily_readiness.to_csv("daily_readiness_clean.csv", index=False)
+
+print("Clean daily readiness file created!")
+
+# Convert day column to datetime
+daily_readiness["day"] = pd.to_datetime(daily_readiness["day"])
+
+# Create calendar month column
+daily_readiness["month"] = daily_readiness["day"].dt.to_period("M").astype(str)
+
+print(daily_readiness[["day", "month"]].head())
+
+# Create monthly aggregations
+monthly_readiness = (
+    daily_readiness
+    .groupby("month")
+    .agg(
+        avg_readiness=("score", "mean"),
+        avg_hrv=("hrv_balance", "mean"),
+        avg_temp_dev=("temperature_deviation", "mean"),
+        readiness_std=("score", "std"),
+        low_readiness_days=("score", lambda x: (x < 70).sum())
+    )
+    .reset_index()
+)
+
+print(monthly_readiness)
+
+# Save monthly output
+monthly_readiness.to_csv("monthly_readiness_summary.csv", index=False)
+print("Monthly readiness summary saved!")
+
+import pandas as pd
+import json
+
+# Load sleep CSV (semicolon separated)
+df_sleep = pd.read_csv("dailysleep.csv", sep=";")
+
+# Inspect the data
+print(df_sleep.head())
+print(df_sleep.columns)
+
+# Parse contributors JSON column
+contributors_sleep = df_sleep["contributors"].apply(json.loads).apply(pd.Series)
+
+print(contributors_sleep.head())
+
+# Create clean daily sleep table
+daily_sleep = pd.concat(
+    [
+        df_sleep[["day", "score"]],
+        contributors_sleep[
+            [
+                "total_sleep",
+                "efficiency",
+                "restfulness",
+                "deep_sleep",
+                "rem_sleep",
+                "latency",
+                "timing"
+            ]
+        ]
+    ],
+    axis=1
+)
+
+# Save clean sleep file
+daily_sleep.to_csv("daily_sleep_clean.csv", index=False)
+
+print("Daily sleep clean file created!")
+
+# Convert day column to datetime
+daily_sleep["day"] = pd.to_datetime(daily_sleep["day"])
+
+# Create calendar month column
+daily_sleep["month"] = daily_sleep["day"].dt.to_period("M").astype(str)
+
+print(daily_sleep[["day", "month"]].head())
+
+# Create monthly aggregations
+monthly_sleep = (
+    daily_sleep
+    .groupby("month")
+    .agg(
+        avg_sleep_score=("score", "mean"),
+        avg_total_sleep=("total_sleep", "mean"),
+        avg_efficiency=("efficiency", "mean"),
+        avg_restfulness=("restfulness", "mean"),
+        avg_deep_sleep=("deep_sleep", "mean"),
+        avg_rem_sleep=("rem_sleep", "mean"),
+        sleep_variability=("score", "std"),
+        short_sleep_days=("total_sleep", lambda x: (x < 6 * 60 * 60).sum()) # Oura uses seconds
+    )
+    .reset_index()
+)
+monthly_sleep.to_csv("monthly_sleep_summary.csv", index=False)
+
+print("Monthly sleep summary saved!")
